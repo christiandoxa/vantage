@@ -6,17 +6,36 @@
 ENABLE_FAN_MODE=1
 
 VPC="/sys/bus/platform/devices/VPC2004\:*"
-BAT="$(find /sys/class/power_supply -maxdepth 1 -name 'BAT*' | head -n 1)"
+BAT="$(find /sys/class/power_supply -maxdepth 1 -name 'BAT*' | sort | head -n 1)"
 
 touchpad_id="$(xinput list | grep "Touchpad" | cut -d '=' -f2 | awk '{print $1}')"
+
+write_sysfs() {
+    local value="$1"
+    local target="$2"
+
+    printf '%s\n' "$value" | pkexec tee "$target" >/dev/null
+}
 
 has_conservation_mode() {
     test -f "$BAT/charge_types" || test -f $VPC/conservation_mode
 }
 
+charge_type_supported() {
+    local charge_type="$1"
+
+    grep -qw "$charge_type" "$BAT/charge_types" 2>/dev/null
+}
+
 get_conservation_mode_status() {
     if test -f "$BAT/charge_types"; then
-        grep -q '\[Long_Life\]' "$BAT/charge_types" && echo "On" || echo "Off"
+        if grep -q '\[Long_Life\]' "$BAT/charge_types"; then
+            echo "On"
+        elif grep -q '\[Standard\]' "$BAT/charge_types"; then
+            echo "Off"
+        else
+            echo "Unknown"
+        fi
     else
         cat $VPC/conservation_mode | awk '{print ($1 == "1") ? "On" : "Off"}'
     fi
@@ -24,16 +43,20 @@ get_conservation_mode_status() {
 
 set_conservation_mode() {
     local enabled="$1"
+    local charge_type="Standard"
+    local legacy_state="0"
 
-    if test -f "$BAT/charge_types"; then
-        if test "$enabled" = 1; then
-            echo "Long_Life" | pkexec tee "$BAT/charge_types"
-        else
-            echo "Standard" | pkexec tee "$BAT/charge_types"
-        fi
-    else
-        echo "$enabled" | pkexec tee $VPC/conservation_mode
+    if test "$enabled" = 1; then
+        charge_type="Long_Life"
+        legacy_state="1"
     fi
+
+    if test -f "$BAT/charge_types" && charge_type_supported "$charge_type"; then
+        write_sysfs "$charge_type" "$BAT/charge_types"
+        return
+    fi
+
+    write_sysfs "$legacy_state" $VPC/conservation_mode
 }
 
 get_usb_charging_status() {
