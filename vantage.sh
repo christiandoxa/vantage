@@ -6,11 +6,34 @@
 ENABLE_FAN_MODE=1
 
 VPC="/sys/bus/platform/devices/VPC2004\:*"
+BAT="$(find /sys/class/power_supply -maxdepth 1 -name 'BAT*' | head -n 1)"
 
 touchpad_id="$(xinput list | grep "Touchpad" | cut -d '=' -f2 | awk '{print $1}')"
 
+has_conservation_mode() {
+    test -f "$BAT/charge_types" || test -f $VPC/conservation_mode
+}
+
 get_conservation_mode_status() {
-    cat $VPC/conservation_mode | awk '{print ($1 == "1") ? "On" : "Off"}'
+    if test -f "$BAT/charge_types"; then
+        grep -q '\[Long_Life\]' "$BAT/charge_types" && echo "On" || echo "Off"
+    else
+        cat $VPC/conservation_mode | awk '{print ($1 == "1") ? "On" : "Off"}'
+    fi
+}
+
+set_conservation_mode() {
+    local enabled="$1"
+
+    if test -f "$BAT/charge_types"; then
+        if test "$enabled" = 1; then
+            echo "Long_Life" | pkexec tee "$BAT/charge_types"
+        else
+            echo "Standard" | pkexec tee "$BAT/charge_types"
+        fi
+    else
+        echo "$enabled" | pkexec tee $VPC/conservation_mode
+    fi
 }
 
 get_usb_charging_status() {
@@ -62,7 +85,7 @@ show_submenu_on_off() {
 main() {
     while :; do
         local options=()
-        test -f $VPC/conservation_mode && options+=("Conservation Mode" "$(get_conservation_mode_status)")
+        has_conservation_mode && options+=("Conservation Mode" "$(get_conservation_mode_status)")
         test -f $VPC/usb_charging && options+=("Always-On USB" "$(get_usb_charging_status)")
         test -f $VPC/fan_mode && test "$ENABLE_FAN_MODE" = 1 && options+=("Fan Mode" "$(get_fan_mode_status)")
         test -f $VPC/fn_lock && options+=("FN Lock" "$(get_fn_lock_status)")
@@ -76,8 +99,8 @@ main() {
             "Conservation Mode")
                 local submenu="$(show_submenu_on_off "Conservation Mode" "$(get_conservation_mode_status)")"
                 case "$submenu" in
-                    "$SUBMENU_ON") echo "1" | pkexec tee $VPC/conservation_mode ;;
-                    "$SUBMENU_OFF") echo "0" | pkexec tee $VPC/conservation_mode ;;
+                    "$SUBMENU_ON") set_conservation_mode 1 ;;
+                    "$SUBMENU_OFF") set_conservation_mode 0 ;;
                 esac
                 ;;
             "Always-On USB")
@@ -147,4 +170,3 @@ main() {
 }
 
 main "$@"
-
