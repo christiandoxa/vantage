@@ -1,0 +1,1 @@
+SUBSYSTEM=="power_supply", ACTION=="change", KERNEL=="ACAD|BAT*|ucsi-source-psy-USBC000:*", TAG+="systemd", ENV{SYSTEMD_WANTS}+="lenovo-vantage-charge-refresh.service"
