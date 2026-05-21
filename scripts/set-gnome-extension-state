@@ -1,0 +1,56 @@
+#!/usr/bin/env python3
+import ast
+import subprocess
+import sys
+
+
+SCHEMA = "org.gnome.shell"
+
+
+def usage():
+    print("usage: set-gnome-extension-state UUID enable|disable", file=sys.stderr)
+    return 2
+
+
+def get_strv(key):
+    output = subprocess.check_output(
+        ["gsettings", "get", SCHEMA, key],
+        text=True,
+    ).strip()
+    value = ast.literal_eval(output)
+    if not isinstance(value, list):
+        raise ValueError(f"{key} is not a string list")
+    return value
+
+
+def set_strv(key, value):
+    subprocess.check_call(["gsettings", "set", SCHEMA, key, repr(value)])
+
+
+def without_uuid(values, uuid):
+    return [value for value in values if value != uuid]
+
+
+def main():
+    if len(sys.argv) != 3:
+        return usage()
+
+    uuid, action = sys.argv[1], sys.argv[2]
+    if action not in ("enable", "disable"):
+        return usage()
+
+    enabled = without_uuid(get_strv("enabled-extensions"), uuid)
+    disabled = without_uuid(get_strv("disabled-extensions"), uuid)
+
+    if action == "enable":
+        enabled.append(uuid)
+    else:
+        disabled.append(uuid)
+
+    set_strv("enabled-extensions", enabled)
+    set_strv("disabled-extensions", disabled)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
