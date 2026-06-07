@@ -1,7 +1,0 @@
-#!/bin/sh
-
-case "$1" in
-    post)
-        systemctl start lenovo-vantage-charge-refresh.service >/dev/null 2>&1 || true
-        ;;
-esac
